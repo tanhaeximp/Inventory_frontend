@@ -1,0 +1,12 @@
+{
+  "welcome": "Welcome",
+  "add_purchase": "Add Purchase",
+  "supplier": "Supplier",
+  "product": "Product",
+  "quantity": "Quantity",
+  "price": "Price",
+  "paid": "Paid Amount",
+  "total": "Total",
+  "due": "Due",
+  "submit": "Submit"
+}
