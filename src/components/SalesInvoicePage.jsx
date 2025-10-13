@@ -27,6 +27,7 @@ const selectPortalProps = {
   menuShouldScrollIntoView: false,
 };
 
+// ✅ Ensure products are unique by name (like PurchaseInvoice)
 function makeUniqueProducts(raw = []) {
   const seen = new Set();
   const out = [];
@@ -44,29 +45,42 @@ function makeUniqueProducts(raw = []) {
       unit: p.unit || "",
       units,
       price: p.price ?? "",
-      stock: p.stock,
+      stock: p.stock ?? 0,
     });
   }
   return out;
 }
 
+// 💠 Reusable UI Components
 function Card({ children, className = "" }) {
-  return <div className={`rounded-2xl shadow-lg bg-white border border-gray-100 ${className}`}>{children}</div>;
+  return (
+    <div className={`rounded-2xl shadow-lg bg-white border border-gray-100 ${className}`}>
+      {children}
+    </div>
+  );
 }
+
 function Button({ children, onClick, type = "button", variant = "primary", disabled }) {
-  const base = "px-4 py-2 rounded-xl text-sm font-medium transition active:scale-[.98] disabled:opacity-50";
+  const base =
+    "px-4 py-2 rounded-xl text-sm font-medium transition active:scale-[.98] disabled:opacity-50";
   const styles = {
     primary: "bg-blue-600 hover:bg-blue-700 text-white shadow-sm",
     ghost: "bg-white border border-gray-300 hover:border-gray-400 text-gray-700",
     soft: "bg-gray-100 hover:bg-gray-200 text-gray-800",
   };
   return (
-    <button type={type} className={`${base} ${styles[variant]}`} onClick={onClick} disabled={disabled}>
+    <button
+      type={type}
+      className={`${base} ${styles[variant]}`}
+      onClick={onClick}
+      disabled={disabled}
+    >
       {children}
     </button>
   );
 }
 
+// 🧾 Print Function (same layout style as Purchase)
 function printInvoice({ company, invoice, t }) {
   const rows = (invoice.items || [])
     .map((it) => {
@@ -74,14 +88,14 @@ function printInvoice({ company, invoice, t }) {
       const price = Number(it.price || 0);
       const amount = (qty * price).toFixed(2);
       return `
-    <tr>
-      <td>${it.productName || it.product?.name || ""}</td>
-      <td>${it.categoryName || it.category?.name || ""}</td>
-      <td>${it.unit || ""}</td>
-      <td class="num">${qty}</td>
-      <td class="num">${price.toFixed(2)}</td>
-      <td class="num">${amount}</td>
-    </tr>`;
+        <tr>
+          <td>${it.productName || it.product?.name || ""}</td>
+          <td>${it.categoryName || it.category?.name || ""}</td>
+          <td>${it.unit || ""}</td>
+          <td class="num">${qty}</td>
+          <td class="num">${price.toFixed(2)}</td>
+          <td class="num">${amount}</td>
+        </tr>`;
     })
     .join("");
 
@@ -95,7 +109,8 @@ function printInvoice({ company, invoice, t }) {
   const html = `<!doctype html><html><head><meta charset="utf-8" />
 <title>${t("salesInvoice")} ${invoice.invoiceNo || ""}</title>
 <style>
-  *{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;margin:24px;color:#0f172a}
+  *{box-sizing:border-box}
+  body{font-family:Arial,Helvetica,sans-serif;margin:24px;color:#0f172a}
   header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
   header img{height:42px}
   .brand .name{font-weight:700}
@@ -111,7 +126,8 @@ function printInvoice({ company, invoice, t }) {
 </style></head><body>
 <header>
   ${company.logo ? `<img src="${company.logo}" alt="Logo" />` : ""}
-  <div class="brand"><div class="name">${company.name || ""}</div><div class="muted">${t("salesInvoice")}</div></div>
+  <div class="brand"><div class="name">${company.name || ""}</div>
+  <div class="muted">${t("salesInvoice")}</div></div>
 </header>
 
 <h1>${t("invoice")} #${invoice.invoiceNo || ""}</h1>
@@ -150,6 +166,7 @@ function printInvoice({ company, invoice, t }) {
   }, 350);
 }
 
+// 🌟 Main Component
 export default function SalesInvoicePage() {
   const { t } = useTranslation();
 
@@ -168,6 +185,7 @@ export default function SalesInvoicePage() {
   const grandTotal = Math.max(0, subTotal - (Number(discount) || 0));
   const due = Math.max(0, grandTotal - (Number(paid) || 0));
 
+  // 🔄 Load customers, products, categories
   useEffect(() => {
     (async () => {
       try {
@@ -185,6 +203,7 @@ export default function SalesInvoicePage() {
     })();
   }, []);
 
+  // 🧭 Row Handlers (match purchase)
   const onChangeRowProduct = (idx, opt) => {
     setRows((rs) => {
       const copy = [...rs];
@@ -228,6 +247,7 @@ export default function SalesInvoicePage() {
   const addRow = () => setRows((rs) => [...rs, { ...emptyRow }]);
   const removeRow = (idx) => setRows((rs) => (rs.length === 1 ? rs : rs.filter((_, i) => i !== idx)));
 
+  // ✅ Validation
   const validate = () => {
     if (!customerId) return t("selectCustomer") || "Select customer.";
     for (const r of rows) {
@@ -245,11 +265,15 @@ export default function SalesInvoicePage() {
     return "";
   };
 
+  // 🧾 Submit Invoice
   const onSubmit = async (e) => {
     e.preventDefault();
     setErr("");
     const v = validate();
-    if (v) { setErr(v); return; }
+    if (v) {
+      setErr(v);
+      return;
+    }
     setLoading(true);
     try {
       const payload = {
@@ -266,6 +290,7 @@ export default function SalesInvoicePage() {
         paid: Number(paid || 0),
         note,
       };
+
       const res = await api.post("/api/invoices/sales", payload);
 
       const invoice = {
@@ -296,7 +321,7 @@ export default function SalesInvoicePage() {
       setPaid("");
       setNote("");
     } catch (e) {
-      setErr(e?.response?.data?.message || "Failed to create invoice");
+      setErr(e?.response?.data?.message || "Failed to create sales invoice");
     } finally {
       setLoading(false);
     }
@@ -308,7 +333,9 @@ export default function SalesInvoicePage() {
         <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl text-white p-6 shadow">
           <div className="flex flex-col md:flex-row md:items-end gap-4">
             <div className="flex-1">
-              <div className="text-sm/5 text-white/80">{t("salesInvoice") || "Sales Invoice"}</div>
+              <div className="text-sm/5 text-white/80">
+                {t("salesInvoice") || "Sales Invoice"}
+              </div>
               <h1 className="text-3xl font-bold tracking-tight">
                 {customerId ? ` ${customers.find((c) => c.value === customerId)?.label || ""}` : ""}
               </h1>
@@ -318,12 +345,17 @@ export default function SalesInvoicePage() {
       </div>
 
       <Card className="p-5 space-y-4">
-        {err && <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700">{err}</div>}
+        {err && (
+          <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700">{err}</div>
+        )}
 
         <form onSubmit={onSubmit} className="space-y-4">
+          {/* Header Fields */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="text-sm text-gray-600">{t("customer") || "Customer"}</label>
+              <label className="text-sm text-gray-600">
+                {t("customer") || "Customer"}
+              </label>
               <Select
                 {...selectPortalProps}
                 options={customers}
@@ -334,12 +366,18 @@ export default function SalesInvoicePage() {
               />
             </div>
             <div>
-              <label className="text-sm text-gray-600">{t("noteOptional") || "Note (optional)"}</label>
-              <input className="w-full border rounded-xl px-3 py-2" value={note} onChange={(e) => setNote(e.target.value)} />
+              <label className="text-sm text-gray-600">
+                {t("noteOptional") || "Note (optional)"}
+              </label>
+              <input
+                className="w-full border rounded-xl px-3 py-2"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+              />
             </div>
           </div>
 
-          {/* --- Mobile cards (<sm) --- */}
+          {/* --- Mobile view --- */}
           <div className="space-y-3 sm:hidden">
             {rows.map((r, idx) => {
               const amount = (Number(r.quantity) || 0) * (Number(r.price) || 0);
@@ -376,26 +414,13 @@ export default function SalesInvoicePage() {
                     isSearchable
                   />
                 ) : (
-                  <input className="w-full border rounded-xl px-2 py-2" value={r.unit || ""} readOnly placeholder={t("unit") || "unit"} />
+                  <input
+                    className="w-full border rounded-xl px-2 py-2"
+                    value={r.unit || ""}
+                    readOnly
+                    placeholder={t("unit") || "unit"}
+                  />
                 );
-              const quantityInput = (
-                <input
-                  type="number"
-                  className="w-full border rounded-xl px-3 py-2 text-right"
-                  value={r.quantity}
-                  min={0}
-                  onChange={(e) => onChangeCell(idx, "quantity", e.target.value)}
-                />
-              );
-              const priceInput = (
-                <input
-                  type="number"
-                  className="w-full border rounded-xl px-3 py-2 text-right"
-                  value={r.price}
-                  min={0}
-                  onChange={(e) => onChangeCell(idx, "price", e.target.value)}
-                />
-              );
 
               return (
                 <LineItemCard
@@ -404,8 +429,24 @@ export default function SalesInvoicePage() {
                   productSelect={productSelect}
                   categorySelect={categorySelect}
                   unitSelectOrInput={unitSelectOrInput}
-                  quantityInput={quantityInput}
-                  priceInput={priceInput}
+                  quantityInput={
+                    <input
+                      type="number"
+                      className="w-full border rounded-xl px-3 py-2 text-right"
+                      value={r.quantity}
+                      min={0}
+                      onChange={(e) => onChangeCell(idx, "quantity", e.target.value)}
+                    />
+                  }
+                  priceInput={
+                    <input
+                      type="number"
+                      className="w-full border rounded-xl px-3 py-2 text-right"
+                      value={r.price}
+                      min={0}
+                      onChange={(e) => onChangeCell(idx, "price", e.target.value)}
+                    />
+                  }
                   amountLabel={currency(amount || 0)}
                   onRemove={() => removeRow(idx)}
                   t={t}
@@ -419,7 +460,7 @@ export default function SalesInvoicePage() {
             </div>
           </div>
 
-          {/* --- Desktop table (≥sm) --- */}
+          {/* --- Desktop view --- */}
           <div className="hidden sm:block overflow-x-auto scroll-soft">
             <table className="w-full text-sm min-w-[800px]">
               <thead className="bg-gray-50">
@@ -470,7 +511,12 @@ export default function SalesInvoicePage() {
                             isSearchable
                           />
                         ) : (
-                          <input className="w-full border rounded-xl px-2 py-1" value={r.unit || ""} readOnly placeholder={t("unit") || "unit"} />
+                          <input
+                            className="w-full border rounded-xl px-2 py-1"
+                            value={r.unit || ""}
+                            readOnly
+                            placeholder={t("unit") || "unit"}
+                          />
                         )}
                       </td>
                       <td className="px-3 py-2">
@@ -491,9 +537,15 @@ export default function SalesInvoicePage() {
                           onChange={(e) => onChangeCell(idx, "price", e.target.value)}
                         />
                       </td>
-                      <td className="px-3 py-2 text-right tabular-nums">{currency(amount || 0)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {currency(amount || 0)}
+                      </td>
                       <td className="px-3 py-2">
-                        <button type="button" className="text-rose-600 hover:underline" onClick={() => removeRow(idx)}>
+                        <button
+                          type="button"
+                          className="text-rose-600 hover:underline"
+                          onClick={() => removeRow(idx)}
+                        >
                           {t("remove") || "Remove"}
                         </button>
                       </td>
@@ -503,7 +555,9 @@ export default function SalesInvoicePage() {
               </tbody>
             </table>
             <div className="p-3">
-              <Button variant="soft" onClick={addRow}>+ {t("addItem") || "Add Item"}</Button>
+              <Button variant="soft" onClick={addRow}>
+                + {t("addItem") || "Add Item"}
+              </Button>
             </div>
           </div>
 
@@ -515,7 +569,13 @@ export default function SalesInvoicePage() {
             </div>
             <div className="p-4 rounded-xl bg-gray-50 border">
               <label className="text-xs text-gray-500">{t("discount") || "Discount"}</label>
-              <input type="number" className="w-full border rounded-xl px-3 py-2 mt-1" value={discount} min={0} onChange={(e) => setDiscount(e.target.value)} />
+              <input
+                type="number"
+                className="w-full border rounded-xl px-3 py-2 mt-1"
+                value={discount}
+                min={0}
+                onChange={(e) => setDiscount(e.target.value)}
+              />
             </div>
             <div className="p-4 rounded-xl bg-gray-50 border">
               <div className="text-xs text-gray-500">{t("grandTotal") || "Grand Total"}</div>
@@ -523,7 +583,13 @@ export default function SalesInvoicePage() {
             </div>
             <div className="p-4 rounded-xl bg-gray-50 border">
               <label className="text-xs text-gray-500">{t("paid") || "Paid"}</label>
-              <input type="number" className="w-full border rounded-xl px-3 py-2 mt-1" value={paid} min={0} onChange={(e) => setPaid(e.target.value)} />
+              <input
+                type="number"
+                className="w-full border rounded-xl px-3 py-2 mt-1"
+                value={paid}
+                min={0}
+                onChange={(e) => setPaid(e.target.value)}
+              />
             </div>
             <div className="p-4 rounded-xl bg-gray-50 border">
               <div className="text-xs text-gray-500">{t("due") || "Due"}</div>

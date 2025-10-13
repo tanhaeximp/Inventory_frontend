@@ -1,4 +1,4 @@
-// src/pages/Customers.jsx
+// src/components/CustomerPage.jsx
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -71,14 +71,14 @@ export default function Customers() {
         <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl text-white p-6 shadow">
           <div className="flex flex-col md:flex-row md:items-end gap-4">
             <div className="flex-1">
-              <div className="text-sm/5 text-white/80">{t("customers") || "Customers"}</div>
-              <h1 className="text-3xl font-bold tracking-tight">{t("customersList") || "Customers List"}</h1>
+              <div className="text-sm/5 text-white/80">{t("customers") || "customers"}</div>
+              <h1 className="text-3xl font-bold tracking-tight">{t("customersList") || "customersList"}</h1>
             </div>
             <div className="flex gap-2">
               <Button variant="soft" onClick={fetchCustomers} disabled={loading}>
-                {loading ? (t("loading") || "Loading...") : (t("refresh") || "Refresh")}
+                {loading ? (t("loading") || "loading") : (t("refresh") || "refresh")}
               </Button>
-              <Button onClick={onAdd}>+ {t("add") || "Add"}</Button>
+              <Button onClick={onAdd}>+ {t("add") || "add"}</Button>
             </div>
           </div>
         </div>
@@ -89,7 +89,7 @@ export default function Customers() {
 
         <input
           className="w-full border rounded-xl px-3 py-2"
-          placeholder={t("searchCustomers") || "Search customers..."}
+          placeholder={t("searchCustomers") || "searchCustomers"}
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
@@ -106,8 +106,8 @@ export default function Customers() {
               <td className="px-3 py-2 text-right">{Number(c.balance || 0).toFixed(2)}</td>
               <td className="px-3 py-2">
                 <div className="flex justify-end gap-2">
-                  <Button variant="soft" onClick={() => onEdit(c)}>{t("edit") || "Edit"}</Button>
-                  <Button variant="danger" onClick={() => onDelete(c)}>{t("delete") || "Delete"}</Button>
+                  <Button variant="soft" onClick={() => onEdit(c)}>{t("edit") || "edit"}</Button>
+                  <Button variant="danger" onClick={() => onDelete(c)}>{t("delete") || "delete"}</Button>
                 </div>
               </td>
             </tr>
@@ -120,12 +120,12 @@ export default function Customers() {
               </div>
               <div className="text-sm text-gray-600">{c.address || ""}</div>
               <div className="flex items-center justify-between pt-1">
-                <div className="text-xs text-gray-500">{t("balance") || "Balance"}</div>
+                <div className="text-xs text-gray-500">{t("balance") || "balance"}</div>
                 <div className="font-semibold tabular-nums">{Number(c.balance || 0).toFixed(2)}</div>
               </div>
               <div className="pt-2 flex gap-2">
-                <Button variant="soft" onClick={() => onEdit(c)}>{t("edit") || "Edit"}</Button>
-                <Button variant="danger" onClick={() => onDelete(c)}>{t("delete") || "Delete"}</Button>
+                <Button variant="soft" onClick={() => onEdit(c)}>{t("edit") || "edit"}</Button>
+                <Button variant="danger" onClick={() => onDelete(c)}>{t("delete") || "delete"}</Button>
               </div>
             </div>
           )}

@@ -68,24 +68,18 @@ function Stat({ label, value, icon, trend, trendDir = "up", sub }) {
       <div className="flex items-start justify-between">
         <div>
           <div className="text-xs text-gray-500">{label}</div>
-
-          {/* ↓ Reduced font size slightly so amount fits in one line */}
           <div className="mt-1 text-xl font-semibold tabular-nums whitespace-nowrap overflow-hidden text-ellipsis">
             {value}
           </div>
-
           {sub && <div className="mt-1 text-xs text-gray-500">{sub}</div>}
         </div>
-
         <div className="shrink-0 rounded-xl bg-gray-50 p-2 text-gray-700">
           <Icon size={20} />
         </div>
       </div>
 
       {trend && (
-        <div
-          className={`mt-3 inline-flex items-center gap-2 text-xs font-medium ${color} ${bg} px-2 py-1 rounded-lg`}
-        >
+        <div className={`mt-3 inline-flex items-center gap-2 text-xs font-medium ${color} ${bg} px-2 py-1 rounded-lg`}>
           {trendDir === "up" ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
           {trend}
         </div>
@@ -93,7 +87,6 @@ function Stat({ label, value, icon, trend, trendDir = "up", sub }) {
     </Card>
   );
 }
-
 
 function SegButton({ active, onClick, children }) {
   return (
@@ -124,13 +117,28 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
+  // --- helpers to fetch with graceful fallbacks ---
+  const tryGet = async (primary, fallback) => {
+    try {
+      return await api.get(primary);
+    } catch (e) {
+      const status = e?.response?.status;
+      if (status === 404 && fallback) {
+        // fallback path (legacy route)
+        return await api.get(fallback);
+      }
+      throw e;
+    }
+  };
+
   const load = async () => {
     setLoading(true);
     setErr("");
     try {
       const [s, p, st, c, sp] = await Promise.all([
-        api.get(`/api/invoices/sales?from=${from}&to=${to}&limit=5000`),
-        api.get(`/api/invoices/purchases?from=${from}&to=${to}&limit=5000`),
+        // Try invoices routes; if 404, fall back to legacy endpoints
+        tryGet(`/api/invoices/sales?from=${from}&to=${to}&limit=5000`, `/api/sales?from=${from}&to=${to}&limit=5000`),
+        tryGet(`/api/invoices/purchases?from=${from}&to=${to}&limit=5000`, `/api/purchases?from=${from}&to=${to}&limit=5000`),
         api.get("/api/stock/summary"),
         api.get("/api/customers"),
         api.get("/api/suppliers"),
@@ -141,14 +149,16 @@ export default function Dashboard() {
 
       const stockRows = Array.isArray(st.data?.rows) ? st.data.rows : st.data || [];
       setStock(
-        stockRows.map((r) => ({
-          productId: r.productId || r._id,
+        stockRows.map((r, idx) => ({
+          // keep original ids but we will use composite keys when rendering
+          productId: r.productId || r._id || `prod-${idx}`,
           name: r.name,
           unit: r.unit,
           stock: Number(r.stock || 0),
           avgCost: Number(r.avgCost || 0),
           totalValue: Number(r.totalValue || 0),
           category: r.category || "Uncategorized",
+          categoryName: r.categoryName || r.category || "Uncategorized",
         }))
       );
 
@@ -178,8 +188,8 @@ export default function Dashboard() {
       const months = monthsBetween(from, to);
       const sMap = Object.fromEntries(months.map((m) => [m, 0]));
       const pMap = Object.fromEntries(months.map((m) => [m, 0]));
-      sales.forEach((r) => { const k = ym(r.date || r.createdAt); if (k in sMap) sMap[k] += Number(r.grandTotal || 0); });
-      purchases.forEach((r) => { const k = ym(r.date || r.createdAt); if (k in pMap) pMap[k] += Number(r.grandTotal || 0); });
+      sales.forEach((r) => { const k = ym(r.date || r.createdAt || new Date()); if (k in sMap) sMap[k] += Number(r.grandTotal || 0); });
+      purchases.forEach((r) => { const k = ym(r.date || r.createdAt || new Date()); if (k in pMap) pMap[k] += Number(r.grandTotal || 0); });
       return months.map((m) => ({ x: m, sales: sMap[m], purchases: pMap[m] }));
     }
     const days = rangeDays(period === "7d" ? 7 : 30);
@@ -216,15 +226,21 @@ export default function Dashboard() {
   }, [sales]);
 
   const activity = useMemo(() => {
-    const s = sales.map((r) => ({
-      id: r._id, type: "sale", title: r.invoiceNo || "Sale",
-      party: r.customer?.name || "", amount: Number(r.grandTotal || 0),
-      at: new Date(r.date || r.createdAt || Date.now())
+    const s = sales.map((r, i) => ({
+      id: r._id || `s-${i}`,
+      type: "sale",
+      title: r.invoiceNo || "Sale",
+      party: r.customer?.name || "",
+      amount: Number(r.grandTotal || 0),
+      at: new Date(r.date || r.createdAt || Date.now()),
     }));
-    const p = purchases.map((r) => ({
-      id: r._id, type: "purchase", title: r.invoiceNo || "Purchase",
-      party: r.supplier?.name || "", amount: Number(r.grandTotal || 0),
-      at: new Date(r.date || r.createdAt || Date.now())
+    const p = purchases.map((r, i) => ({
+      id: r._id || `p-${i}`,
+      type: "purchase",
+      title: r.invoiceNo || "Purchase",
+      party: r.supplier?.name || "",
+      amount: Number(r.grandTotal || 0),
+      at: new Date(r.date || r.createdAt || Date.now()),
     }));
     return [...s, ...p].sort((a, b) => b.at - a.at).slice(0, 8);
   }, [sales, purchases]);
@@ -233,8 +249,6 @@ export default function Dashboard() {
     () => [...stock].sort((a, b) => b.totalValue - a.totalValue).slice(0, 6),
     [stock]
   );
-
-  /* ---------- NEW INSIGHTS ---------- */
 
   // Top Products by Sales
   const topProducts = useMemo(() => {
@@ -256,7 +270,7 @@ export default function Dashboard() {
     const map = {};
     sales.forEach((r) => {
       (r.items || []).forEach((it) => {
-        const cat = it.product?.category || "Uncategorized";
+        const cat = it.product?.category || it.categoryName || "Uncategorized";
         map[cat] = (map[cat] || 0) + (Number(it.quantity || 0) * Number(it.price || 0));
       });
     });
@@ -342,7 +356,7 @@ export default function Dashboard() {
             <ResponsiveContainer>
               <PieChart>
                 <Pie data={paidDue} dataKey="value" nameKey="name" innerRadius={50} outerRadius={80}>
-                  {paidDue.map((_, i) => <Cell key={i} fill={i === 0 ? "#22c55e" : "#ef4444"} />)}
+                  {paidDue.map((_, i) => <Cell key={`paid-due-${i}`} fill={i === 0 ? "#22c55e" : "#ef4444"} />)}
                 </Pie>
                 <Legend />
                 <Tooltip formatter={(v) => money(v)} />
@@ -369,7 +383,7 @@ export default function Dashboard() {
           </div>
         </Card>
 
-        {/* NEW: Sales by Category */}
+        {/* Sales by Category */}
         <Card className="p-5">
           <div className="mb-3 text-sm text-gray-600 inline-flex items-center gap-2">
             <Tag size={14} /> Sales by Category
@@ -379,7 +393,7 @@ export default function Dashboard() {
               <PieChart>
                 <Pie data={salesByCategory} dataKey="value" nameKey="name" innerRadius={45} outerRadius={80} paddingAngle={2}>
                   {salesByCategory.map((_, i) => (
-                    <Cell key={i} fill={["#6366f1","#06b6d4","#22c55e","#f59e0b","#ef4444","#8b5cf6","#14b8a6","#84cc16"][i % 8]} />
+                    <Cell key={`cat-${i}`} fill={["#6366f1","#06b6d4","#22c55e","#f59e0b","#ef4444","#8b5cf6","#14b8a6","#84cc16"][i % 8]} />
                   ))}
                 </Pie>
                 <Legend />
@@ -390,9 +404,9 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      {/* Charts row 3 (NEW sections) */}
+      {/* Charts row 3 */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 mb-6">
-        {/* NEW: Top Products */}
+        {/* Top Products */}
         <Card className="p-5 xl:col-span-2">
           <div className="mb-3 text-sm text-gray-600">Top Products by Sales</div>
           <div className="h-72">
@@ -408,7 +422,7 @@ export default function Dashboard() {
           </div>
         </Card>
 
-        {/* NEW: Top Suppliers */}
+        {/* Top Suppliers */}
         <Card className="p-5">
           <div className="mb-3 text-sm text-gray-600 inline-flex items-center gap-2">
             <Factory size={14} /> Top Suppliers
@@ -432,8 +446,8 @@ export default function Dashboard() {
         <Card className="p-5 xl:col-span-2">
           <div className="mb-3 text-sm text-gray-600">Recent Activity</div>
           <div className="divide-y">
-            {activity.map((a) => (
-              <div key={`${a.type}-${a.id}`} className="py-3 flex items-center justify-between">
+            {activity.map((a, i) => (
+              <div key={`act-${a.type}-${a.id}-${i}`} className="py-3 flex items-center justify-between">
                 <div>
                   <div className="font-medium">{a.title}</div>
                   <div className="text-xs text-gray-500">
@@ -463,8 +477,10 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {topStock.map((r) => (
-                  <tr key={r.productId}>
+                {topStock.map((r, idx) => (
+                  <tr
+                    key={`stock-${r.productId}-${r.category || "none"}-${r.unit || "none"}-${idx}`}
+                  >
                     <td className="px-3 py-2">{r.name}</td>
                     <td className="px-3 py-2">{r.unit || "-"}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{money(r.avgCost)}</td>

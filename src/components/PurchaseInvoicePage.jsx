@@ -5,18 +5,19 @@ import { useTranslation } from "react-i18next";
 import api from "./api";
 import LineItemCard from "../components/LineItemCard";
 
+/* ---------------- helpers ---------------- */
 const currencyFmt = new Intl.NumberFormat(undefined, { style: "currency", currency: "BDT" });
 const currency = (n) => currencyFmt.format(Number(n || 0));
 
 const emptyRow = {
-  product: "",
-  label: "",
+  productKey: "",     // normalized product-name key (NOT an _id)
+  label: "",          // display label (name only)
   unit: "",
-  unitOptions: [],
+  unitOptions: [],    // available unit list for this name
   quantity: "",
   price: "",
   amount: 0,
-  category: "",
+  category: "",       // category _id
   categoryLabel: "",
 };
 
@@ -27,26 +28,64 @@ const selectPortalProps = {
   menuShouldScrollIntoView: false,
 };
 
-function makeUniqueProducts(raw = []) {
-  const seen = new Set();
-  const out = [];
+/**
+ * Build "common" options grouped by product NAME.
+ * - Each option contains all variants (ids) for that name, with their units & prices.
+ * - UI shows just the name; unit selector chooses the variant.
+ * - On submit, we resolve (name + unit) → concrete product _id.
+ */
+function buildCommonProductOptions(raw = []) {
+  const byName = new Map(); // key: normalizedName -> { key, label, units:Set, variants:[{id,unit,price}] }
   for (const p of raw) {
-    const key = String(p.name || "").trim().toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
+    const name = String(p.name || "").trim();
+    const key = name.toLowerCase(); // normalized
+    if (!byName.has(key)) {
+      byName.set(key, {
+        key,
+        label: name,
+        units: new Set(),
+        variants: [], // each element { id, unit, price }
+      });
+    }
+    const rec = byName.get(key);
+    const units = Array.isArray(p.units) && p.units.length ? p.units : (p.unit ? [p.unit] : [""]);
+    const basePrice = p.price ?? "";
 
-    const units = Array.isArray(p.units) && p.units.length ? p.units : p.unit ? [p.unit] : [];
-
-    out.push({
-      value: p._id,
-      label: `${p.name}${p.unit ? ` (${p.unit})` : ""}`,
-      name: p.name,
-      unit: p.unit || "",
-      units,
-      price: p.price ?? "",
-    });
+    // add each variant (id + unit)
+    for (const u of units) {
+      rec.units.add(u || "");
+      rec.variants.push({
+        id: String(p._id),
+        unit: u || "",
+        price: basePrice,
+      });
+    }
   }
-  return out;
+
+  // finalize arrays
+  return Array.from(byName.values()).map((rec) => ({
+    key: rec.key,
+    label: rec.label,
+    units: Array.from(rec.units),
+    variants: rec.variants,
+  }));
+}
+
+/** Find price for a (productKey + unit) from commonOptions */
+function findVariantPrice(commonOptions, key, unit) {
+  const rec = commonOptions.find((o) => o.key === key);
+  if (!rec) return "";
+  const v = rec.variants.find((vv) => vv.unit === (unit || ""));
+  return v?.price ?? "";
+}
+
+/** Resolve product _id for a (productKey + unit) from commonOptions */
+function resolveProductId(commonOptions, key, unit) {
+  const rec = commonOptions.find((o) => o.key === key);
+  if (!rec) return null;
+  // prefer exact unit match; otherwise first variant as fallback
+  const v = rec.variants.find((vv) => vv.unit === (unit || "")) || rec.variants[0];
+  return v?.id || null;
 }
 
 function Card({ children, className = "" }) {
@@ -60,12 +99,13 @@ function Button({ children, onClick, type = "button", variant = "primary", disab
     soft: "bg-gray-100 hover:bg-gray-200 text-gray-800",
   };
   return (
-    <button type={type} className={`${base} ${styles[variant]}`} onClick={onClick} disabled={disabled}>
+    <button type={type} className={`${base} ${styles[variant] || styles.primary}`} onClick={onClick} disabled={disabled}>
       {children}
     </button>
   );
 }
 
+/** Print invoice in hidden iframe */
 function printInvoice({ company, invoice, t }) {
   const rows = (invoice.items || [])
     .map((it) => {
@@ -112,10 +152,8 @@ function printInvoice({ company, invoice, t }) {
   ${company.logo ? `<img src="${company.logo}" alt="Logo" />` : ""}
   <div class="brand"><div class="name">${company.name || ""}</div><div class="muted">${t("purchaseInvoice")}</div></div>
 </header>
-
 <h1>${t("invoice")} #${invoice.invoiceNo || ""}</h1>
 <div class="muted">${when}</div>
-
 <table>
   <thead><tr>
     <th>${t("product")}</th><th>${t("category")}</th><th>${t("unit")}</th>
@@ -123,7 +161,6 @@ function printInvoice({ company, invoice, t }) {
   </tr></thead>
   <tbody>${rows}</tbody>
 </table>
-
 <div class="totals">
   <table>
     <tr><td>${t("subtotal")}</td><td class="num">${sub}</td></tr>
@@ -138,10 +175,8 @@ function printInvoice({ company, invoice, t }) {
   const iframe = document.createElement("iframe");
   Object.assign(iframe.style, { position: "fixed", right: 0, bottom: 0, width: 0, height: 0, border: 0 });
   document.body.appendChild(iframe);
-
   const doc = iframe.contentWindow?.document || iframe.contentDocument;
   doc.open(); doc.write(html); doc.close();
-
   setTimeout(() => {
     iframe.contentWindow?.focus();
     iframe.contentWindow?.print();
@@ -149,12 +184,14 @@ function printInvoice({ company, invoice, t }) {
   }, 350);
 }
 
+/* ---------------- page ---------------- */
 export default function PurchaseInvoicePage() {
   const { t } = useTranslation();
 
   const [suppliers, setSuppliers] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [productsList, setProductsList] = useState([]);
+  const [productCommon, setProductCommon] = useState([]); // [{key,label,units[],variants[{id,unit,price}]}]
+
   const [supplierId, setSupplierId] = useState("");
   const [rows, setRows] = useState([{ ...emptyRow }]);
   const [discount, setDiscount] = useState("");
@@ -167,6 +204,7 @@ export default function PurchaseInvoicePage() {
   const grandTotal = Math.max(0, subTotal - (Number(discount) || 0));
   const due = Math.max(0, grandTotal - (Number(paid) || 0));
 
+  /* load suppliers, products, categories */
   useEffect(() => {
     (async () => {
       try {
@@ -176,7 +214,7 @@ export default function PurchaseInvoicePage() {
           api.get("/api/categories"),
         ]);
         setSuppliers(sup.data.map((s) => ({ value: s._id, label: s.name })));
-        setProductsList(makeUniqueProducts(prod.data));
+        setProductCommon(buildCommonProductOptions(prod.data)); // group by name (common)
         setCategories(cats.data.map((c) => ({ value: c._id, label: c.name })));
       } catch (e) {
         setErr(e?.response?.data?.message || "Failed to load suppliers/products/categories");
@@ -184,17 +222,21 @@ export default function PurchaseInvoicePage() {
     })();
   }, []);
 
+  /* row handlers */
   const onChangeRowProduct = (idx, opt) => {
     setRows((rs) => {
       const copy = [...rs];
-      const unitOptions = Array.isArray(opt?.units) ? opt.units : opt?.unit ? [opt.unit] : [];
+      const rec = productCommon.find((o) => o.key === opt?.value);
+      const unitOptions = rec ? rec.units : [];
+      const defaultUnit = unitOptions[0] || "";
       copy[idx] = {
         ...copy[idx],
-        product: opt?.value || "",
+        productKey: opt?.value || "",
         label: opt?.label || "",
-        unit: unitOptions[0] || "",
+        unit: defaultUnit,
         unitOptions,
-        price: opt?.price ?? "",
+        // default price from the selected (name + defaultUnit) variant if present
+        price: rec ? findVariantPrice(productCommon, opt?.value, defaultUnit) : "",
       };
       return copy;
     });
@@ -211,7 +253,11 @@ export default function PurchaseInvoicePage() {
   const onChangeRowUnit = (idx, opt) => {
     setRows((rs) => {
       const copy = [...rs];
-      copy[idx] = { ...copy[idx], unit: opt?.value || "" };
+      const row = copy[idx];
+      const newUnit = opt?.value || "";
+      // when unit changes, try to refresh price from that variant
+      const newPrice = row.productKey ? findVariantPrice(productCommon, row.productKey, newUnit) : row.price;
+      copy[idx] = { ...row, unit: newUnit, price: newPrice };
       return copy;
     });
   };
@@ -227,19 +273,24 @@ export default function PurchaseInvoicePage() {
   const addRow = () => setRows((rs) => [...rs, { ...emptyRow }]);
   const removeRow = (idx) => setRows((rs) => (rs.length === 1 ? rs : rs.filter((_, i) => i !== idx)));
 
+  /* validation */
   const validate = () => {
     if (!supplierId) return t("selectSupplier") || "Select supplier.";
     for (const r of rows) {
-      if (!r.product) return "Each row must have a product.";
+      if (!r.productKey) return "Each row must have a product.";
       if (!r.unit) return "Each row must have a unit.";
       if (!r.quantity || Number(r.quantity) <= 0) return "Quantity must be > 0.";
       if (Number(r.price) < 0) return "Price must be ≥ 0.";
+      // Ensure we can resolve a concrete product id
+      const pid = resolveProductId(productCommon, r.productKey, r.unit);
+      if (!pid) return `Cannot resolve product id for "${r.label}" (${r.unit}).`;
     }
     if (Number(paid) < 0) return "Paid must be ≥ 0.";
     if ((Number(paid) || 0) > grandTotal) return "Paid cannot exceed total.";
     return "";
   };
 
+  /* submit */
   const onSubmit = async (e) => {
     e.preventDefault();
     setErr("");
@@ -247,31 +298,41 @@ export default function PurchaseInvoicePage() {
     if (v) { setErr(v); return; }
     setLoading(true);
     try {
-      const payload = {
-        supplier: supplierId,
-        items: rows.map((r) => ({
-          product: r.product,
+      // Convert (name + unit) to concrete product _id here
+      const items = rows.map((r) => {
+        const productId = resolveProductId(productCommon, r.productKey, r.unit);
+        return {
+          product: productId,
           category: r.category || null,
           categoryName: r.categoryLabel || "",
           unit: r.unit,
           quantity: Number(r.quantity),
           price: Number(r.price),
-        })),
+        };
+      });
+
+      const payload = {
+        supplier: supplierId,
+        items,
         discount: Number(discount || 0),
         paid: Number(paid || 0),
         note,
       };
+
       const res = await api.post("/api/invoices/purchases", payload);
 
+      // Enrich for printing
       const invoice = {
         ...res.data,
         items: (res.data.items || []).map((it) => {
-          const id = typeof it.product === "object" && it.product?._id ? it.product._id : String(it.product);
-          const p = productsList.find((pp) => String(pp.value) === id);
-          const catName = it.categoryName || rows.find((r) => r.product === id)?.categoryLabel || "";
+          const id =
+            typeof it.product === "object" && it.product?._id ? it.product._id : String(it.product);
+          // find the common record that contains this id
+          const rec = productCommon.find((o) => o.variants.some((v) => v.id === id));
+          const catName = it.categoryName || rows.find((r) => resolveProductId(productCommon, r.productKey, r.unit) === id)?.categoryLabel || "";
           return {
             ...it,
-            productName: p ? p.label : it.product?.name || id,
+            productName: rec ? rec.label : it.product?.name || id,
             categoryName: catName,
             price: Number(it.price || 0),
             quantity: Number(it.quantity || 0),
@@ -285,6 +346,7 @@ export default function PurchaseInvoicePage() {
         t,
       });
 
+      // Reset form
       setSupplierId("");
       setRows([{ ...emptyRow }]);
       setDiscount("");
@@ -297,6 +359,7 @@ export default function PurchaseInvoicePage() {
     }
   };
 
+  /* ---------------- render ---------------- */
   return (
     <div className="max-w-screen-2xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 pb-10">
       <div className="mb-6">
@@ -316,6 +379,7 @@ export default function PurchaseInvoicePage() {
         {err && <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700">{err}</div>}
 
         <form onSubmit={onSubmit} className="space-y-4">
+          {/* Supplier + Note */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="text-sm text-gray-600">{t("supplier") || "Supplier"}</label>
@@ -342,8 +406,8 @@ export default function PurchaseInvoicePage() {
               const productSelect = (
                 <Select
                   {...selectPortalProps}
-                  options={productsList}
-                  value={r.product ? productsList.find((p) => p.value === r.product) : null}
+                  options={productCommon.map((o) => ({ value: o.key, label: o.label }))}
+                  value={r.productKey ? { value: r.productKey, label: r.label } : null}
                   onChange={(opt) => onChangeRowProduct(idx, opt)}
                   placeholder={t("product") || "Select product"}
                   isSearchable
@@ -394,7 +458,7 @@ export default function PurchaseInvoicePage() {
 
               return (
                 <LineItemCard
-                  key={idx}
+                  key={`li-${idx}`}
                   index={idx}
                   productSelect={productSelect}
                   categorySelect={categorySelect}
@@ -408,9 +472,7 @@ export default function PurchaseInvoicePage() {
               );
             })}
             <div className="pt-2">
-              <Button variant="soft" onClick={addRow}>
-                + {t("addItem") || "Add Item"}
-              </Button>
+              <Button variant="soft" onClick={addRow}>+ {t("addItem") || "Add Item"}</Button>
             </div>
           </div>
 
@@ -432,12 +494,12 @@ export default function PurchaseInvoicePage() {
                 {rows.map((r, idx) => {
                   const amount = (Number(r.quantity) || 0) * (Number(r.price) || 0);
                   return (
-                    <tr key={idx} className="align-top">
+                    <tr key={`row-${idx}`} className="align-top">
                       <td className="px-3 py-2 min-w-[220px]">
                         <Select
                           {...selectPortalProps}
-                          options={productsList}
-                          value={r.product ? productsList.find((p) => p.value === r.product) : null}
+                          options={productCommon.map((o) => ({ value: o.key, label: o.label }))}
+                          value={r.productKey ? { value: r.productKey, label: r.label } : null}
                           onChange={(opt) => onChangeRowProduct(idx, opt)}
                           placeholder={t("product") || "Select product"}
                           isSearchable

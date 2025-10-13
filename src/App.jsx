@@ -26,6 +26,12 @@ import PurchaseInvoicePage from "./components/PurchaseInvoicePage";
 import { SidebarProvider } from "./components/SidebarContext";
 import ProfitAndLoss from "./components/ProfitAndLoss";
 import BalanceSheet from "./components/BalanceSheet";
+import CustomerForm from "./components/CustomerForm";
+import SupplierForm from "./components/SupplierForm";
+import OtherTransactionsPage from "./components/OtherTransactionsPage";
+
+// ✅ NEW import
+//import CustomerForm from "./components/CustomerPage";
 
 export default function App() {
   const [user, setUser] = useState(() => localStorage.getItem("token"));
@@ -43,26 +49,18 @@ export default function App() {
   return (
     <SidebarProvider>
       <Router>
-        {/* Top navigation is sticky; hamburger toggles the mobile drawer via SidebarContext */}
         <Navbar />
 
-        {/* Page layout below the navbar */}
         <div className="max-w-screen-2xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8">
           <div className="flex gap-0 lg:gap-6">
-            {/* Sidebar (drawer on mobile, static on desktop) – only when authenticated */}
             {user && <Sidebar handleLogout={handleLogout} />}
 
-            {/* Main content */}
             <main className="flex-1 py-4 lg:py-6">
               <Routes>
-                {/* Landing → dashboard if logged in, otherwise login */}
                 <Route path="/" element={<Navigate to={user ? "/dashboard" : "/login"} replace />} />
-
-                {/* Public routes */}
                 <Route path="/login" element={<Login onLogin={handleLogin} />} />
                 <Route path="/register" element={<Register />} />
 
-                {/* Protected routes */}
                 <Route
                   path="/dashboard"
                   element={
@@ -72,7 +70,6 @@ export default function App() {
                   }
                 />
 
-                {/* Core app pages */}
                 <Route
                   path="/purchases/*"
                   element={
@@ -97,11 +94,46 @@ export default function App() {
                     </PrivateRoute>
                   }
                 />
+
+                {/* ✅ NEW Routes for Add/Edit customer */}
+                <Route
+                  path="/customers/new"
+                  element={
+                    <PrivateRoute>
+                      <CustomerForm />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/customers/:id"
+                  element={
+                    <PrivateRoute>
+                      <CustomerForm />
+                    </PrivateRoute>
+                  }
+                />
+
                 <Route
                   path="/suppliers"
                   element={
                     <PrivateRoute>
                       <Suppliers />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/suppliers/new"
+                  element={
+                    <PrivateRoute>
+                      <SupplierForm />
+                    </PrivateRoute>
+                  }
+                />
+                <Route
+                  path="/suppliers/:id"
+                  element={
+                    <PrivateRoute>
+                      <SupplierForm />
                     </PrivateRoute>
                   }
                 />
@@ -129,6 +161,15 @@ export default function App() {
                     </PrivateRoute>
                   }
                 />
+                
+                  <Route
+                    path="/other-transactions"
+                    element={
+                      <PrivateRoute>
+                        <OtherTransactionsPage />
+                      </PrivateRoute>
+                    }
+                  />
                 <Route
                   path="/users"
                   element={
@@ -138,7 +179,6 @@ export default function App() {
                   }
                 />
 
-                {/* Summaries */}
                 <Route
                   path="/purchases/summary"
                   element={
@@ -156,7 +196,6 @@ export default function App() {
                   }
                 />
 
-                {/* Ledgers */}
                 <Route
                   path="/ledger/customers"
                   element={
@@ -174,7 +213,6 @@ export default function App() {
                   }
                 />
 
-                {/* Invoice pages */}
                 <Route
                   path="/sales/invoice"
                   element={
@@ -191,6 +229,7 @@ export default function App() {
                     </PrivateRoute>
                   }
                 />
+
                 <Route
                   path="/reports/pnl"
                   element={
@@ -207,14 +246,12 @@ export default function App() {
                       <BalanceSheet />
                     </PrivateRoute>
                   }
-/>
+                />
 
-                {/* --- Friendly redirects to match Sidebar links --- */}
                 <Route path="/invoices/purchase" element={<Navigate to="/purchases" replace />} />
                 <Route path="/invoices/sales" element={<Navigate to="/sales" replace />} />
                 <Route path="/reports/stock" element={<Navigate to="/stocks" replace />} />
 
-                {/* Fallback: unknown routes → dashboard or login */}
                 <Route path="*" element={<Navigate to={user ? "/dashboard" : "/login"} replace />} />
                 <Route path="/reports/pnl" element={<ProfitAndLoss />} />
               </Routes>

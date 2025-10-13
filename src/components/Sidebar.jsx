@@ -3,7 +3,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Package, ShoppingCart, ReceiptText,
   Users, UserRound, Boxes, Layers, FileSpreadsheet,
-  UserCog, LogOut, ChevronDown, ChevronRight
+  UserCog, LogOut, ChevronDown, ChevronRight,Wallet
 } from "lucide-react";
 import { useSidebar } from "./SidebarContext";
 
@@ -242,12 +242,23 @@ export default function Sidebar({ handleLogout }) {
             onToggle={() => toggleMenu("reports")}
             collapsed={collapsed}
           >
-            <SubItem to="/reports/daily" label="Daily" collapsed={collapsed} onNavigate={handleNavigate} />
-            <SubItem to="/reports/monthly" label="Monthly" collapsed={collapsed} onNavigate={handleNavigate} />
-            <SubItem to="/reports/annual" label="Annual" collapsed={collapsed} onNavigate={handleNavigate} />
+            
             <SubItem to="/reports/pnl" label="Profit & Loss" collapsed={collapsed} onNavigate={handleNavigate} />
             <SubItem to="/reports/balance-sheet" label="Balance Sheet" collapsed={collapsed} onNavigate={handleNavigate} />
             
+            
+          </MainMenu>
+
+          <MainMenu
+            icon={Wallet}
+            title="Finance"
+            open={openMenu === "finance"}
+            onToggle={() => toggleMenu("finance")}
+            collapsed={collapsed}
+          >
+
+            <SubItem to="/other-transactions" label="Other Income & Expenses" collapsed={collapsed} onNavigate={handleNavigate} />
+          
           </MainMenu>
 
           {/* Users */}
