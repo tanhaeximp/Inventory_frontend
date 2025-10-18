@@ -15,7 +15,7 @@ function Chip({ children }) {
 function Button({ children, onClick, type = "button", variant = "primary", disabled, className = "", title }) {
   const base = "px-3 md:px-4 py-2 rounded-xl text-sm font-medium transition active:scale-[.98] disabled:opacity-50";
   const styles = {
-    primary: "bg-green-600 hover:bg-green-700 text-white shadow-sm",
+    primary: "bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm",
     ghost: "bg-white border border-gray-300 hover:border-gray-400 text-gray-700",
     soft: "bg-gray-100 hover:bg-gray-200 text-gray-800",
   };
@@ -302,7 +302,7 @@ export default function PurchaseSummary() {
     <div className="max-w-screen-2xl mx-auto px-4 md:px-6 lg:px-8 pb-10">
       {/* Header */}
       <div className="mb-6">
-        <div className="bg-gradient-to-r from-emerald-600 to-green-600 rounded-2xl text-white p-6 shadow">
+        <div className="bg-gradient-to-r from-indigo-600 to-blue-600 rounded-2xl text-white p-6 shadow">
           <div className="flex flex-col md:flex-row md:items-end gap-4">
             <div className="flex-1">
               <div className="text-sm/5 text-white/80">Reports</div>

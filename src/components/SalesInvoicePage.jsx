@@ -5,18 +5,19 @@ import { useTranslation } from "react-i18next";
 import api from "./api";
 import LineItemCard from "../components/LineItemCard";
 
+/* ---------------- helpers ---------------- */
 const currencyFmt = new Intl.NumberFormat(undefined, { style: "currency", currency: "BDT" });
 const currency = (n) => currencyFmt.format(Number(n || 0));
 
 const emptyRow = {
-  product: "",
-  label: "",
+  productKey: "",     // normalized product-name key (NOT an _id)
+  label: "",          // display label (name only)
   unit: "",
-  unitOptions: [],
+  unitOptions: [],    // available unit list for this name
   quantity: "",
   price: "",
   amount: 0,
-  category: "",
+  category: "",       // category _id
   categoryLabel: "",
 };
 
@@ -27,60 +28,68 @@ const selectPortalProps = {
   menuShouldScrollIntoView: false,
 };
 
-// ✅ Ensure products are unique by name (like PurchaseInvoice)
-function makeUniqueProducts(raw = []) {
-  const seen = new Set();
-  const out = [];
+/**
+ * Build "common" options grouped by product NAME.
+ * - Each option contains all variants (ids) for that name, with their units & prices (and optional stock).
+ * - UI shows just the name; the unit selector chooses the variant.
+ */
+function buildCommonProductOptions(raw = []) {
+  const byName = new Map(); // key: normalizedName -> { key, label, units:Set, variants:[{id,unit,price,stock}] }
   for (const p of raw) {
-    const key = String(p.name || "").trim().toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
+    const name = String(p.name || "").trim();
+    const key = name.toLowerCase();
+    if (!byName.has(key)) {
+      byName.set(key, { key, label: name, units: new Set(), variants: [] });
+    }
+    const rec = byName.get(key);
+    const units = Array.isArray(p.units) && p.units.length ? p.units : (p.unit ? [p.unit] : [""]);
+    const basePrice = p.price ?? "";
+    const stock = p.stock ?? null;
 
-    const units = Array.isArray(p.units) && p.units.length ? p.units : p.unit ? [p.unit] : [];
-
-    out.push({
-      value: p._id,
-      label: `${p.name}${p.unit ? ` (${p.unit})` : ""}`,
-      name: p.name,
-      unit: p.unit || "",
-      units,
-      price: p.price ?? "",
-      stock: p.stock ?? 0,
-    });
+    for (const u of units) {
+      rec.units.add(u || "");
+      rec.variants.push({
+        id: String(p._id),
+        unit: u || "",
+        price: basePrice,
+        stock,
+      });
+    }
   }
-  return out;
+
+  return Array.from(byName.values()).map((rec) => ({
+    key: rec.key,
+    label: rec.label,
+    units: Array.from(rec.units),
+    variants: rec.variants,
+  }));
 }
 
-// 💠 Reusable UI Components
-function Card({ children, className = "" }) {
-  return (
-    <div className={`rounded-2xl shadow-lg bg-white border border-gray-100 ${className}`}>
-      {children}
-    </div>
-  );
+/** Find price for a (productKey + unit) from commonOptions */
+function findVariantPrice(commonOptions, key, unit) {
+  const rec = commonOptions.find((o) => o.key === key);
+  if (!rec) return "";
+  const v = rec.variants.find((vv) => vv.unit === (unit || ""));
+  return v?.price ?? "";
 }
 
-function Button({ children, onClick, type = "button", variant = "primary", disabled }) {
-  const base =
-    "px-4 py-2 rounded-xl text-sm font-medium transition active:scale-[.98] disabled:opacity-50";
-  const styles = {
-    primary: "bg-blue-600 hover:bg-blue-700 text-white shadow-sm",
-    ghost: "bg-white border border-gray-300 hover:border-gray-400 text-gray-700",
-    soft: "bg-gray-100 hover:bg-gray-200 text-gray-800",
-  };
-  return (
-    <button
-      type={type}
-      className={`${base} ${styles[variant]}`}
-      onClick={onClick}
-      disabled={disabled}
-    >
-      {children}
-    </button>
-  );
+/** Find stock (if available) for a (productKey + unit) */
+function findVariantStock(commonOptions, key, unit) {
+  const rec = commonOptions.find((o) => o.key === key);
+  if (!rec) return null;
+  const v = rec.variants.find((vv) => vv.unit === (unit || ""));
+  return v?.stock ?? null;
 }
 
-// 🧾 Print Function (same layout style as Purchase)
+/** Resolve product _id for a (productKey + unit) from commonOptions */
+function resolveProductId(commonOptions, key, unit) {
+  const rec = commonOptions.find((o) => o.key === key);
+  if (!rec) return null;
+  const v = rec.variants.find((vv) => vv.unit === (unit || "")) || rec.variants[0];
+  return v?.id || null;
+}
+
+/** Print invoice in hidden iframe */
 function printInvoice({ company, invoice, t }) {
   const rows = (invoice.items || [])
     .map((it) => {
@@ -88,14 +97,14 @@ function printInvoice({ company, invoice, t }) {
       const price = Number(it.price || 0);
       const amount = (qty * price).toFixed(2);
       return `
-        <tr>
-          <td>${it.productName || it.product?.name || ""}</td>
-          <td>${it.categoryName || it.category?.name || ""}</td>
-          <td>${it.unit || ""}</td>
-          <td class="num">${qty}</td>
-          <td class="num">${price.toFixed(2)}</td>
-          <td class="num">${amount}</td>
-        </tr>`;
+    <tr>
+      <td>${it.productName || it.product?.name || ""}</td>
+      <td>${it.categoryName || it.category?.name || ""}</td>
+      <td>${it.unit || ""}</td>
+      <td class="num">${qty}</td>
+      <td class="num">${price.toFixed(2)}</td>
+      <td class="num">${amount}</td>
+    </tr>`;
     })
     .join("");
 
@@ -109,8 +118,7 @@ function printInvoice({ company, invoice, t }) {
   const html = `<!doctype html><html><head><meta charset="utf-8" />
 <title>${t("salesInvoice")} ${invoice.invoiceNo || ""}</title>
 <style>
-  *{box-sizing:border-box}
-  body{font-family:Arial,Helvetica,sans-serif;margin:24px;color:#0f172a}
+  *{box-sizing:border-box} body{font-family:Arial,Helvetica,sans-serif;margin:24px;color:#0f172a}
   header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
   header img{height:42px}
   .brand .name{font-weight:700}
@@ -126,13 +134,10 @@ function printInvoice({ company, invoice, t }) {
 </style></head><body>
 <header>
   ${company.logo ? `<img src="${company.logo}" alt="Logo" />` : ""}
-  <div class="brand"><div class="name">${company.name || ""}</div>
-  <div class="muted">${t("salesInvoice")}</div></div>
+  <div class="brand"><div class="name">${company.name || ""}</div><div class="muted">${t("salesInvoice")}</div></div>
 </header>
-
 <h1>${t("invoice")} #${invoice.invoiceNo || ""}</h1>
 <div class="muted">${when}</div>
-
 <table>
   <thead><tr>
     <th>${t("product")}</th><th>${t("category")}</th><th>${t("unit")}</th>
@@ -140,7 +145,6 @@ function printInvoice({ company, invoice, t }) {
   </tr></thead>
   <tbody>${rows}</tbody>
 </table>
-
 <div class="totals">
   <table>
     <tr><td>${t("subtotal")}</td><td class="num">${sub}</td></tr>
@@ -155,10 +159,8 @@ function printInvoice({ company, invoice, t }) {
   const iframe = document.createElement("iframe");
   Object.assign(iframe.style, { position: "fixed", right: 0, bottom: 0, width: 0, height: 0, border: 0 });
   document.body.appendChild(iframe);
-
   const doc = iframe.contentWindow?.document || iframe.contentDocument;
   doc.open(); doc.write(html); doc.close();
-
   setTimeout(() => {
     iframe.contentWindow?.focus();
     iframe.contentWindow?.print();
@@ -166,13 +168,14 @@ function printInvoice({ company, invoice, t }) {
   }, 350);
 }
 
-// 🌟 Main Component
+/* ---------------- page ---------------- */
 export default function SalesInvoicePage() {
   const { t } = useTranslation();
 
   const [customers, setCustomers] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [productsList, setProductsList] = useState([]);
+  const [productCommon, setProductCommon] = useState([]); // [{key,label,units[],variants[{id,unit,price,stock}]}]
+
   const [customerId, setCustomerId] = useState("");
   const [rows, setRows] = useState([{ ...emptyRow }]);
   const [discount, setDiscount] = useState("");
@@ -185,7 +188,7 @@ export default function SalesInvoicePage() {
   const grandTotal = Math.max(0, subTotal - (Number(discount) || 0));
   const due = Math.max(0, grandTotal - (Number(paid) || 0));
 
-  // 🔄 Load customers, products, categories
+  /* load customers, products, categories */
   useEffect(() => {
     (async () => {
       try {
@@ -195,7 +198,7 @@ export default function SalesInvoicePage() {
           api.get("/api/categories"),
         ]);
         setCustomers(cus.data.map((c) => ({ value: c._id, label: c.name })));
-        setProductsList(makeUniqueProducts(prod.data));
+        setProductCommon(buildCommonProductOptions(prod.data)); // group by name (common)
         setCategories(cats.data.map((c) => ({ value: c._id, label: c.name })));
       } catch (e) {
         setErr(e?.response?.data?.message || "Failed to load customers/products/categories");
@@ -203,18 +206,20 @@ export default function SalesInvoicePage() {
     })();
   }, []);
 
-  // 🧭 Row Handlers (match purchase)
+  /* row handlers */
   const onChangeRowProduct = (idx, opt) => {
     setRows((rs) => {
       const copy = [...rs];
-      const unitOptions = Array.isArray(opt?.units) ? opt.units : opt?.unit ? [opt.unit] : [];
+      const rec = productCommon.find((o) => o.key === opt?.value);
+      const unitOptions = rec ? rec.units : [];
+      const defaultUnit = unitOptions[0] || "";
       copy[idx] = {
         ...copy[idx],
-        product: opt?.value || "",
+        productKey: opt?.value || "",
         label: opt?.label || "",
-        unit: unitOptions[0] || "",
+        unit: defaultUnit,
         unitOptions,
-        price: opt?.price ?? "",
+        price: rec ? findVariantPrice(productCommon, opt?.value, defaultUnit) : "",
       };
       return copy;
     });
@@ -231,7 +236,10 @@ export default function SalesInvoicePage() {
   const onChangeRowUnit = (idx, opt) => {
     setRows((rs) => {
       const copy = [...rs];
-      copy[idx] = { ...copy[idx], unit: opt?.value || "" };
+      const row = copy[idx];
+      const newUnit = opt?.value || "";
+      const newPrice = row.productKey ? findVariantPrice(productCommon, row.productKey, newUnit) : row.price;
+      copy[idx] = { ...row, unit: newUnit, price: newPrice };
       return copy;
     });
   };
@@ -247,17 +255,22 @@ export default function SalesInvoicePage() {
   const addRow = () => setRows((rs) => [...rs, { ...emptyRow }]);
   const removeRow = (idx) => setRows((rs) => (rs.length === 1 ? rs : rs.filter((_, i) => i !== idx)));
 
-  // ✅ Validation
+  /* validation */
   const validate = () => {
     if (!customerId) return t("selectCustomer") || "Select customer.";
     for (const r of rows) {
-      if (!r.product) return "Each row must have a product.";
+      if (!r.productKey) return "Each row must have a product.";
       if (!r.unit) return "Each row must have a unit.";
       if (!r.quantity || Number(r.quantity) <= 0) return "Quantity must be > 0.";
       if (Number(r.price) < 0) return "Price must be ≥ 0.";
-      const prod = productsList.find((p) => p.value === r.product);
-      if (prod?.stock != null && Number(r.quantity) > prod.stock) {
-        return `Insufficient stock for ${prod.label}. Available: ${prod.stock}`;
+      // Resolve concrete product id to validate selection
+      const pid = resolveProductId(productCommon, r.productKey, r.unit);
+      if (!pid) return `Cannot resolve product id for "${r.label}" (${r.unit}).`;
+
+      // Optional stock guard (if present on variant)
+      const stk = findVariantStock(productCommon, r.productKey, r.unit);
+      if (stk != null && Number(r.quantity) > Number(stk)) {
+        return `Insufficient stock for ${r.label} (${r.unit}). Available: ${stk}`;
       }
     }
     if (Number(paid) < 0) return "Paid must be ≥ 0.";
@@ -265,27 +278,30 @@ export default function SalesInvoicePage() {
     return "";
   };
 
-  // 🧾 Submit Invoice
+  /* submit */
   const onSubmit = async (e) => {
     e.preventDefault();
     setErr("");
     const v = validate();
-    if (v) {
-      setErr(v);
-      return;
-    }
+    if (v) { setErr(v); return; }
     setLoading(true);
     try {
-      const payload = {
-        customer: customerId,
-        items: rows.map((r) => ({
-          product: r.product,
+      // Convert (name + unit) to concrete product _id
+      const items = rows.map((r) => {
+        const productId = resolveProductId(productCommon, r.productKey, r.unit);
+        return {
+          product: productId,
           category: r.category || null,
           categoryName: r.categoryLabel || "",
           unit: r.unit,
           quantity: Number(r.quantity),
           price: Number(r.price),
-        })),
+        };
+      });
+
+      const payload = {
+        customer: customerId,
+        items,
         discount: Number(discount || 0),
         paid: Number(paid || 0),
         note,
@@ -293,15 +309,20 @@ export default function SalesInvoicePage() {
 
       const res = await api.post("/api/invoices/sales", payload);
 
+      // Enrich for printing (map id → common label)
       const invoice = {
         ...res.data,
         items: (res.data.items || []).map((it) => {
-          const id = typeof it.product === "object" && it.product?._id ? it.product._id : String(it.product);
-          const p = productsList.find((pp) => String(pp.value) === id);
-          const catName = it.categoryName || rows.find((r) => r.product === id)?.categoryLabel || "";
+          const id =
+            typeof it.product === "object" && it.product?._id ? it.product._id : String(it.product);
+          const rec = productCommon.find((o) => o.variants.some((v) => v.id === id));
+          const catName =
+            it.categoryName ||
+            rows.find((r) => resolveProductId(productCommon, r.productKey, r.unit) === id)?.categoryLabel ||
+            "";
           return {
             ...it,
-            productName: p ? p.label : it.product?.name || id,
+            productName: rec ? rec.label : it.product?.name || id,
             categoryName: catName,
             price: Number(it.price || 0),
             quantity: Number(it.quantity || 0),
@@ -315,27 +336,27 @@ export default function SalesInvoicePage() {
         t,
       });
 
+      // Reset form
       setCustomerId("");
       setRows([{ ...emptyRow }]);
       setDiscount("");
       setPaid("");
       setNote("");
     } catch (e) {
-      setErr(e?.response?.data?.message || "Failed to create sales invoice");
+      setErr(e?.response?.data?.message || "Failed to create invoice");
     } finally {
       setLoading(false);
     }
   };
 
+  /* ---------------- render ---------------- */
   return (
     <div className="max-w-screen-2xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8 pb-10">
       <div className="mb-6">
         <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl text-white p-6 shadow">
           <div className="flex flex-col md:flex-row md:items-end gap-4">
             <div className="flex-1">
-              <div className="text-sm/5 text-white/80">
-                {t("salesInvoice") || "Sales Invoice"}
-              </div>
+              <div className="text-sm/5 text-white/80">{t("salesInvoice") || "Sales Invoice"}</div>
               <h1 className="text-3xl font-bold tracking-tight">
                 {customerId ? ` ${customers.find((c) => c.value === customerId)?.label || ""}` : ""}
               </h1>
@@ -344,18 +365,14 @@ export default function SalesInvoicePage() {
         </div>
       </div>
 
-      <Card className="p-5 space-y-4">
-        {err && (
-          <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700">{err}</div>
-        )}
+      <div className="rounded-2xl shadow-lg bg-white border border-gray-100 p-5 space-y-4">
+        {err && <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700">{err}</div>}
 
         <form onSubmit={onSubmit} className="space-y-4">
-          {/* Header Fields */}
+          {/* Customer + Note */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="text-sm text-gray-600">
-                {t("customer") || "Customer"}
-              </label>
+              <label className="text-sm text-gray-600">{t("customer") || "Customer"}</label>
               <Select
                 {...selectPortalProps}
                 options={customers}
@@ -366,18 +383,12 @@ export default function SalesInvoicePage() {
               />
             </div>
             <div>
-              <label className="text-sm text-gray-600">
-                {t("noteOptional") || "Note (optional)"}
-              </label>
-              <input
-                className="w-full border rounded-xl px-3 py-2"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-              />
+              <label className="text-sm text-gray-600">{t("noteOptional") || "Note (optional)"}</label>
+              <input className="w-full border rounded-xl px-3 py-2" value={note} onChange={(e) => setNote(e.target.value)} />
             </div>
           </div>
 
-          {/* --- Mobile view --- */}
+          {/* --- Mobile cards (<sm) --- */}
           <div className="space-y-3 sm:hidden">
             {rows.map((r, idx) => {
               const amount = (Number(r.quantity) || 0) * (Number(r.price) || 0);
@@ -385,8 +396,8 @@ export default function SalesInvoicePage() {
               const productSelect = (
                 <Select
                   {...selectPortalProps}
-                  options={productsList}
-                  value={r.product ? productsList.find((p) => p.value === r.product) : null}
+                  options={productCommon.map((o) => ({ value: o.key, label: o.label }))}
+                  value={r.productKey ? { value: r.productKey, label: r.label } : null}
                   onChange={(opt) => onChangeRowProduct(idx, opt)}
                   placeholder={t("product") || "Select product"}
                   isSearchable
@@ -414,17 +425,12 @@ export default function SalesInvoicePage() {
                     isSearchable
                   />
                 ) : (
-                  <input
-                    className="w-full border rounded-xl px-2 py-2"
-                    value={r.unit || ""}
-                    readOnly
-                    placeholder={t("unit") || "unit"}
-                  />
+                  <input className="w-full border rounded-xl px-2 py-2" value={r.unit || ""} readOnly placeholder={t("unit") || "unit"} />
                 );
 
               return (
                 <LineItemCard
-                  key={idx}
+                  key={`li-${idx}`}
                   index={idx}
                   productSelect={productSelect}
                   categorySelect={categorySelect}
@@ -454,13 +460,13 @@ export default function SalesInvoicePage() {
               );
             })}
             <div className="pt-2">
-              <Button variant="soft" onClick={addRow}>
+              <button type="button" className="px-4 py-2 rounded-xl text-sm bg-gray-100 hover:bg-gray-200" onClick={addRow}>
                 + {t("addItem") || "Add Item"}
-              </Button>
+              </button>
             </div>
           </div>
 
-          {/* --- Desktop view --- */}
+          {/* --- Desktop table (≥sm) --- */}
           <div className="hidden sm:block overflow-x-auto scroll-soft">
             <table className="w-full text-sm min-w-[800px]">
               <thead className="bg-gray-50">
@@ -478,12 +484,12 @@ export default function SalesInvoicePage() {
                 {rows.map((r, idx) => {
                   const amount = (Number(r.quantity) || 0) * (Number(r.price) || 0);
                   return (
-                    <tr key={idx} className="align-top">
+                    <tr key={`row-${idx}`} className="align-top">
                       <td className="px-3 py-2 min-w-[220px]">
                         <Select
                           {...selectPortalProps}
-                          options={productsList}
-                          value={r.product ? productsList.find((p) => p.value === r.product) : null}
+                          options={productCommon.map((o) => ({ value: o.key, label: o.label }))}
+                          value={r.productKey ? { value: r.productKey, label: r.label } : null}
                           onChange={(opt) => onChangeRowProduct(idx, opt)}
                           placeholder={t("product") || "Select product"}
                           isSearchable
@@ -511,12 +517,7 @@ export default function SalesInvoicePage() {
                             isSearchable
                           />
                         ) : (
-                          <input
-                            className="w-full border rounded-xl px-2 py-1"
-                            value={r.unit || ""}
-                            readOnly
-                            placeholder={t("unit") || "unit"}
-                          />
+                          <input className="w-full border rounded-xl px-2 py-1" value={r.unit || ""} readOnly placeholder={t("unit") || "unit"} />
                         )}
                       </td>
                       <td className="px-3 py-2">
@@ -537,15 +538,9 @@ export default function SalesInvoicePage() {
                           onChange={(e) => onChangeCell(idx, "price", e.target.value)}
                         />
                       </td>
-                      <td className="px-3 py-2 text-right tabular-nums">
-                        {currency(amount || 0)}
-                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">{currency(amount || 0)}</td>
                       <td className="px-3 py-2">
-                        <button
-                          type="button"
-                          className="text-rose-600 hover:underline"
-                          onClick={() => removeRow(idx)}
-                        >
+                        <button type="button" className="text-rose-600 hover:underline" onClick={() => removeRow(idx)}>
                           {t("remove") || "Remove"}
                         </button>
                       </td>
@@ -555,9 +550,9 @@ export default function SalesInvoicePage() {
               </tbody>
             </table>
             <div className="p-3">
-              <Button variant="soft" onClick={addRow}>
+              <button type="button" className="px-4 py-2 rounded-xl text-sm bg-gray-100 hover:bg-gray-200" onClick={addRow}>
                 + {t("addItem") || "Add Item"}
-              </Button>
+              </button>
             </div>
           </div>
 
@@ -569,13 +564,7 @@ export default function SalesInvoicePage() {
             </div>
             <div className="p-4 rounded-xl bg-gray-50 border">
               <label className="text-xs text-gray-500">{t("discount") || "Discount"}</label>
-              <input
-                type="number"
-                className="w-full border rounded-xl px-3 py-2 mt-1"
-                value={discount}
-                min={0}
-                onChange={(e) => setDiscount(e.target.value)}
-              />
+              <input type="number" className="w-full border rounded-xl px-3 py-2 mt-1" value={discount} min={0} onChange={(e) => setDiscount(e.target.value)} />
             </div>
             <div className="p-4 rounded-xl bg-gray-50 border">
               <div className="text-xs text-gray-500">{t("grandTotal") || "Grand Total"}</div>
@@ -583,13 +572,7 @@ export default function SalesInvoicePage() {
             </div>
             <div className="p-4 rounded-xl bg-gray-50 border">
               <label className="text-xs text-gray-500">{t("paid") || "Paid"}</label>
-              <input
-                type="number"
-                className="w-full border rounded-xl px-3 py-2 mt-1"
-                value={paid}
-                min={0}
-                onChange={(e) => setPaid(e.target.value)}
-              />
+              <input type="number" className="w-full border rounded-xl px-3 py-2 mt-1" value={paid} min={0} onChange={(e) => setPaid(e.target.value)} />
             </div>
             <div className="p-4 rounded-xl bg-gray-50 border">
               <div className="text-xs text-gray-500">{t("due") || "Due"}</div>
@@ -598,12 +581,12 @@ export default function SalesInvoicePage() {
           </div>
 
           <div className="flex gap-3 pt-2">
-            <Button type="submit" disabled={loading}>
+            <button type="submit" disabled={loading} className="px-4 py-2 rounded-xl text-sm bg-blue-600 hover:bg-blue-700 text-white">
               {loading ? (t("saving") || "Saving...") : (t("savePrint") || "Save & Print")}
-            </Button>
+            </button>
           </div>
         </form>
-      </Card>
+      </div>
     </div>
   );
 }

@@ -197,7 +197,7 @@ export default function App() {
                 />
 
                 <Route
-                  path="/ledger/customers"
+                  path="/ledger/customers/:id?"
                   element={
                     <PrivateRoute>
                       <CustomerLedgerPage />
