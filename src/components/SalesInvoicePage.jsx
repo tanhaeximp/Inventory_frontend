@@ -356,7 +356,7 @@ export default function SalesInvoicePage() {
         <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl text-white p-6 shadow">
           <div className="flex flex-col md:flex-row md:items-end gap-4">
             <div className="flex-1">
-              <div className="text-sm/5 text-white/80">{t("salesInvoice") || "Sales Invoice"}</div>
+              <div className="text-sm/5 text-white/80">{t("Sales Invoice") || "Sales Invoice"}</div>
               <h1 className="text-3xl font-bold tracking-tight">
                 {customerId ? ` ${customers.find((c) => c.value === customerId)?.label || ""}` : ""}
               </h1>
@@ -372,18 +372,18 @@ export default function SalesInvoicePage() {
           {/* Customer + Note */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="text-sm text-gray-600">{t("customer") || "Customer"}</label>
+              <label className="text-sm text-gray-600">{t("Customer") || "Customer"}</label>
               <Select
                 {...selectPortalProps}
                 options={customers}
                 value={customers.find((c) => c.value === customerId) || null}
                 onChange={(opt) => setCustomerId(opt?.value || "")}
-                placeholder={t("selectCustomer") || "Select customer"}
+                placeholder={t("Select Customer") || "Select customer"}
                 isSearchable
               />
             </div>
             <div>
-              <label className="text-sm text-gray-600">{t("noteOptional") || "Note (optional)"}</label>
+              <label className="text-sm text-gray-600">{t("Note Optional") || "Note (optional)"}</label>
               <input className="w-full border rounded-xl px-3 py-2" value={note} onChange={(e) => setNote(e.target.value)} />
             </div>
           </div>
@@ -582,7 +582,7 @@ export default function SalesInvoicePage() {
 
           <div className="flex gap-3 pt-2">
             <button type="submit" disabled={loading} className="px-4 py-2 rounded-xl text-sm bg-blue-600 hover:bg-blue-700 text-white">
-              {loading ? (t("saving") || "Saving...") : (t("savePrint") || "Save & Print")}
+              {loading ? (t("saving") || "Saving...") : (t("Save") || "Save & Print")}
             </button>
           </div>
         </form>

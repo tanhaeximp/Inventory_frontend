@@ -12,7 +12,7 @@ import { Link } from "react-router-dom";
  * - period?: { from: string, to: string } // optional badge on the right
  * - onSearch?: (query: string) => void
  */
-export default function Navbar({ title = "Dashboard", subtitle = "Overview", period, onSearch }) {
+export default function Navbar({ title = "Dashboard", subtitle = "", period, onSearch }) {
   const { toggle } = useSidebar();
   const [menuOpen, setMenuOpen] = useState(false);
   const [q, setQ] = useState("");

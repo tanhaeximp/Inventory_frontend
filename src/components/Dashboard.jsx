@@ -298,7 +298,7 @@ export default function Dashboard() {
         <div className="rounded-2xl bg-gradient-to-r from-indigo-600 via-blue-600 to-cyan-600 p-6 text-white shadow">
           <div className="flex flex-col md:flex-row md:items-center gap-4">
             <div className="flex-1">
-              <div className="text-sm/5 text-white/70">Overview</div>
+              <div className="text-sm/5 text-white/70"></div>
               <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
               <div className="text-sm/5 text-white/80 mt-1 inline-flex items-center gap-2">
                 <Calendar size={14} className="opacity-80" />
