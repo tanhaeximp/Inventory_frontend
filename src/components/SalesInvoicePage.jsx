@@ -491,7 +491,7 @@ export default function SalesInvoicePage() {
                           options={productCommon.map((o) => ({ value: o.key, label: o.label }))}
                           value={r.productKey ? { value: r.productKey, label: r.label } : null}
                           onChange={(opt) => onChangeRowProduct(idx, opt)}
-                          placeholder={t("product") || "Select product"}
+                          placeholder={t("Product") || "Select product"}
                           isSearchable
                         />
                       </td>
@@ -501,7 +501,7 @@ export default function SalesInvoicePage() {
                           options={categories}
                           value={r.category ? categories.find((c) => c.value === r.category) : null}
                           onChange={(opt) => onChangeRowCategory(idx, opt)}
-                          placeholder={t("category") || "Select category"}
+                          placeholder={t("Category") || "Select category"}
                           isSearchable
                           isClearable
                         />
@@ -513,11 +513,11 @@ export default function SalesInvoicePage() {
                             options={r.unitOptions.map((u) => ({ value: u, label: u }))}
                             value={r.unit ? { value: r.unit, label: r.unit } : null}
                             onChange={(opt) => onChangeRowUnit(idx, opt)}
-                            placeholder={t("unit") || "Select unit"}
+                            placeholder={t("Unit") || "Select unit"}
                             isSearchable
                           />
                         ) : (
-                          <input className="w-full border rounded-xl px-2 py-1" value={r.unit || ""} readOnly placeholder={t("unit") || "unit"} />
+                          <input className="w-full border rounded-xl px-2 py-1 placeholder:capitalize" value={r.unit || ""} readOnly placeholder={t("unit") || "unit"} />
                         )}
                       </td>
                       <td className="px-3 py-2">
@@ -551,7 +551,7 @@ export default function SalesInvoicePage() {
             </table>
             <div className="p-3">
               <button type="button" className="px-4 py-2 rounded-xl text-sm bg-gray-100 hover:bg-gray-200" onClick={addRow}>
-                + {t("addItem") || "Add Item"}
+                + {t("Add Item") || "Add Item"}
               </button>
             </div>
           </div>
@@ -559,15 +559,15 @@ export default function SalesInvoicePage() {
           {/* Totals */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="p-4 rounded-xl bg-gray-50 border">
-              <div className="text-xs text-gray-500">{t("subtotal") || "Subtotal"}</div>
+              <div className="text-xs text-gray-500">{t("Subtotal") || "Subtotal"}</div>
               <div className="text-lg font-semibold">{currency(subTotal)}</div>
             </div>
             <div className="p-4 rounded-xl bg-gray-50 border">
-              <label className="text-xs text-gray-500">{t("discount") || "Discount"}</label>
+              <label className="text-xs text-gray-500">{t("Discount") || "Discount"}</label>
               <input type="number" className="w-full border rounded-xl px-3 py-2 mt-1" value={discount} min={0} onChange={(e) => setDiscount(e.target.value)} />
             </div>
             <div className="p-4 rounded-xl bg-gray-50 border">
-              <div className="text-xs text-gray-500">{t("grandTotal") || "Grand Total"}</div>
+              <div className="text-xs text-gray-500">{t("Grand Total") || "Grand Total"}</div>
               <div className="text-lg font-semibold">{currency(grandTotal)}</div>
             </div>
             <div className="p-4 rounded-xl bg-gray-50 border">
